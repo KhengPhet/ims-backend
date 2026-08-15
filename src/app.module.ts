@@ -20,7 +20,7 @@ import { UsersModule } from './users/users.module';
         password: config.get<string>('DB_PASSWORD', ''),
         database: config.get<string>('DB_DATABASE', 'ims'),
         autoLoadEntities: true,
-        synchronize: false,
+        synchronize: true,
       }),
     }),
     AuthModule,

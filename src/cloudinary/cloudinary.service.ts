@@ -45,7 +45,9 @@ export class CloudinaryService {
 
       stream.on('error', (err) => {
         reject(
-          new Error(`Cloudinary upload stream error: ${err.message ?? 'unknown error'}`),
+          new Error(
+            `Cloudinary upload stream error: ${err.message ?? 'unknown error'}`,
+          ),
         );
       });
 

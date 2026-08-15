@@ -6,82 +6,37 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 
 import { AuthService } from './auth.service';
 
-
 export interface JwtPayload {
+  sub: number;
 
-    sub:number;
+  email: string;
 
-    email:string;
-
-    role:string;
-
+  role: string;
 }
-
-
 
 @Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor(
+    private readonly authService: AuthService,
 
-export class JwtStrategy 
-extends PassportStrategy(Strategy) {
+    config: ConfigService,
+  ) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
 
+      ignoreExpiration: false,
 
-constructor(
+      secretOrKey: config.get<string>('JWT_SECRET') || 'inventory-secret',
+    });
+  }
 
-    private readonly authService:AuthService,
+  async validate(payload: JwtPayload) {
+    const user = await this.authService.validateUser(payload.sub);
 
-    config:ConfigService
+    if (!user) {
+      throw new UnauthorizedException('Invalid token');
+    }
 
-){
-
-
-super({
-
-    jwtFromRequest:
-    ExtractJwt.fromAuthHeaderAsBearerToken(),
-
-
-    ignoreExpiration:false,
-
-
-    secretOrKey:
-    config.get<string>('JWT_SECRET')
-    || 'inventory-secret'
-
-
-});
-
-
-}
-
-
-
-
-async validate(
-    payload:JwtPayload
-){
-
-
-const user =
-await this.authService.validateUser(
-    payload.sub
-);
-
-
-
-if(!user){
-
-    throw new UnauthorizedException(
-        "Invalid token"
-    );
-
-}
-
-
-
-return user;
-
-
-}
-
-
+    return user;
+  }
 }

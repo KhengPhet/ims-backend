@@ -70,7 +70,7 @@ export class AuthService {
         message: 'Register success',
         user: this.toPublicUser(user),
       };
-    } catch (error) {
+    } catch {
       if (image) {
         await this.cloudinaryService.deleteImage(image).catch(() => undefined);
       }

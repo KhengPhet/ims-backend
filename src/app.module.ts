@@ -11,17 +11,24 @@ import { UsersModule } from './users/users.module';
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        url: config.get<string>('DATABASE_URL'),
-        host: config.get<string>('DB_HOST', 'localhost'),
-        port: config.get<number>('DB_PORT', 5432),
-        username: config.get<string>('DB_USERNAME', 'postgres'),
-        password: config.get<string>('DB_PASSWORD', ''),
-        database: config.get<string>('DB_DATABASE', 'ims'),
-        autoLoadEntities: true,
-        synchronize: true,
-      }),
+      useFactory: (config: ConfigService) => {
+        // Production (Railway) MUST use DATABASE_URL.
+        // If DATABASE_URL is present it wins; host/port/username/password
+        // are only used as a local fallback when DATABASE_URL is absent.
+        const databaseUrl = config.get<string>('DATABASE_URL');
+
+        return {
+          type: 'postgres',
+          ...(databaseUrl ? { url: databaseUrl } : {}),
+          host: config.get<string>('DB_HOST', 'localhost'),
+          port: config.get<number>('DB_PORT', 5432),
+          username: config.get<string>('DB_USERNAME', 'postgres'),
+          password: config.get<string>('DB_PASSWORD', ''),
+          database: config.get<string>('DB_DATABASE', 'ims'),
+          autoLoadEntities: true,
+          synchronize: true,
+        };
+      },
     }),
     AuthModule,
     UsersModule,

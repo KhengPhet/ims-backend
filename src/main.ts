@@ -1,28 +1,17 @@
-import {
-  NestFactory
-} from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 
-import {
-  ValidationPipe
-} from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 
-import {
-  ConfigService
-} from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 
 import { AppModule } from './app.module';
 
-import {
-  MulterExceptionFilter
-} from './common/filters/multer-exception.filter';
+import { MulterExceptionFilter } from './common/filters/multer-exception.filter';
 
 async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
 
-  const app =
-    await NestFactory.create(AppModule);
-
-  const config =
-    app.get(ConfigService);
+  const config = app.get(ConfigService);
 
   // =========================
   // VALIDATION
@@ -33,29 +22,37 @@ async function bootstrap() {
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: false,
-    })
+    }),
   );
 
   // =========================
   // FILTER
   // =========================
 
-  app.useGlobalFilters(
-    new MulterExceptionFilter()
-  );
+  app.useGlobalFilters(new MulterExceptionFilter());
 
   // =========================
   // CORS
   // =========================
+  // Supports http://localhost:4200 (dev) PLUS any
+  // production frontend URL(s) listed in the
+  // comma-separated CORS_ORIGIN environment variable.
+  // Example:
+  //   CORS_ORIGIN=https://ims-frontend.up.railway.app,http://localhost:4200
 
-  const corsOrigin =
-    config.get<string>(
-      'CORS_ORIGIN',
-      'http://localhost:4200'
-    );
+  const corsOrigin = config.get<string>('CORS_ORIGIN', 'http://localhost:4200');
+
+  const origins = corsOrigin
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (!origins.includes('http://localhost:4200')) {
+    origins.unshift('http://localhost:4200');
+  }
 
   app.enableCors({
-    origin: corsOrigin,
+    origin: origins,
     credentials: true,
   });
 
@@ -63,19 +60,11 @@ async function bootstrap() {
   // PORT
   // =========================
 
-  const port =
-    Number(
-      config.get<string>('PORT', '8080')
-    );
+  const port = Number(config.get<string>('PORT', '8080'));
 
-  await app.listen(
-    port,
-    '0.0.0.0'
-  );
+  await app.listen(port, '0.0.0.0');
 
-  console.log(
-    `API running on port ${port}`
-  );
+  console.log(`API running on port ${port}`);
 }
 
 void bootstrap();

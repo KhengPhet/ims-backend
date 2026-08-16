@@ -15,6 +15,14 @@ export class CloudinaryService {
     });
   }
 
+  isConfigured(): boolean {
+    return Boolean(
+      this.config.get<string>('CLOUDINARY_CLOUD_NAME') &&
+        this.config.get<string>('CLOUDINARY_API_KEY') &&
+        this.config.get<string>('CLOUDINARY_API_SECRET'),
+    );
+  }
+
   uploadImage(file: Express.Multer.File): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(

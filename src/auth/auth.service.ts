@@ -44,13 +44,29 @@ export class AuthService {
       throw new ConflictException('Email is already registered');
     }
 
+    const existingUsername = await this.usersService.findByUsername(
+      data.username,
+    );
+    if (existingUsername) {
+      throw new ConflictException('Username is already taken');
+    }
+
     let image: string | null = null;
     if (file) {
-      try {
-        image = await this.cloudinaryService.uploadImage(file);
-      } catch (error) {
-        throw new BadRequestException(
-          `Image upload failed, please try again: ${(error as Error).message}`,
+      if (this.cloudinaryService.isConfigured()) {
+        try {
+          image = await this.cloudinaryService.uploadImage(file);
+        } catch (error) {
+          throw new BadRequestException(
+            `Image upload failed, please try again: ${(error as Error).message}`,
+          );
+        }
+      } else {
+        // Cloudinary credentials are not set (e.g. local dev). Register the
+        // account anyway instead of failing because an optional feature is
+        // not configured.
+        console.warn(
+          'Cloudinary is not configured; registering user without a profile image.',
         );
       }
     }
@@ -70,9 +86,13 @@ export class AuthService {
         message: 'Register success',
         user: this.toPublicUser(user),
       };
-    } catch {
+    } catch (error) {
       if (image) {
         await this.cloudinaryService.deleteImage(image).catch(() => undefined);
+      }
+      // PostgreSQL unique violation (email/username) raced the check above.
+      if ((error as { code?: string })?.code === '23505') {
+        throw new ConflictException('Email or username is already taken');
       }
       throw new InternalServerErrorException(
         'Failed to create account. Please try again.',

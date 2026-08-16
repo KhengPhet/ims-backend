@@ -80,7 +80,7 @@ async function bootstrap() {
 
   // Default 3000 matches the frontend dev apiUrl (http://localhost:3000).
   // Deploy hosts (Railway/Vercel) override this via the PORT env var.
-  const port = Number(config.get<string>('PORT', '3000'));
+  const port = Number(config.get<string>('PORT', '8080'));
 
   await app.listen(port, '0.0.0.0');
 

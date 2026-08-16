@@ -8,7 +8,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
-import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { UploadsService } from '../uploads/uploads.service';
 import { User } from '../users/user.entity';
 import { RegisterDto } from './dto/register.dto';
 
@@ -28,8 +28,8 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
-    private cloudinaryService: CloudinaryService,
-  ) { }
+    private uploadsService: UploadsService,
+  ) {}
 
   private toPublicUser(user: User): PublicUser {
     return {
@@ -68,20 +68,17 @@ export class AuthService {
       throw new ConflictException('Email is already registered');
     }
 
-    // 3. Upload image to Cloudinary BEFORE creating the user.
+    // 3. Upload image to local storage BEFORE creating the user.
     //    If the upload fails the user is NOT created.
     let imageUrl: string | null = null;
 
     if (file) {
       try {
-        imageUrl = await this.cloudinaryService.uploadImage(file);
+        imageUrl = this.uploadsService.saveImage(file);
       } catch (error) {
         const err = error as Error;
 
-        this.logger.error(
-          `CLOUDINARY UPLOAD FAILED: ${err.message}`,
-          err.stack,
-        );
+        this.logger.error(`IMAGE UPLOAD FAILED: ${err.message}`, err.stack);
 
         throw new ServiceUnavailableException(
           'Image upload failed. Please try again.',

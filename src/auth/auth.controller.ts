@@ -16,7 +16,6 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import { User } from '../users/user.entity';
-import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = /jpeg|jpg|png|webp|gif/;
@@ -25,7 +24,7 @@ const ALLOWED_IMAGE_TYPES = /jpeg|jpg|png|webp|gif/;
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService ,  private readonly cloudinaryService: CloudinaryService) {}
+  constructor(private readonly authService: AuthService) {}
 
   @Post('register')
   @UseInterceptors(
@@ -80,10 +79,5 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   profile(@CurrentUser() user: User) {
     return user;
-  }
-
-   @Get('cloudinary-test')
-  async cloudinaryTest() {
-    return this.cloudinaryService.testConnection();
   }
 }

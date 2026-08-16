@@ -3,7 +3,7 @@ import { JwtModule, JwtModuleOptions, JwtSignOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
-import { CloudinaryModule } from '../cloudinary/cloudinary.module';
+import { UploadsModule } from '../uploads/uploads.module';
 import { UsersModule } from '../users/users.module';
 
 import { AuthController } from './auth.controller';
@@ -15,7 +15,7 @@ import { RolesGuard } from './roles.guard';
 @Module({
   imports: [
     UsersModule,
-    CloudinaryModule,
+    UploadsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

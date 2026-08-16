@@ -1,134 +1,163 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { v2 as cloudinary } from 'cloudinary';
+import {
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 
-const UPLOAD_TIMEOUT_MS = 90000;
+import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class CloudinaryService {
-  private readonly logger = new Logger(CloudinaryService.name);
+
+  private configured = false;
 
   constructor() {
-    // Read straight from process.env so Railway / Docker env vars are
-    // picked up reliably regardless of ConfigModule load order.
+
+    const cloudName =
+      process.env.CLOUDINARY_CLOUD_NAME;
+
+    const apiKey =
+      process.env.CLOUDINARY_API_KEY;
+
+    const apiSecret =
+      process.env.CLOUDINARY_API_SECRET;
+
+
+    console.log(
+      '========== CLOUDINARY CONFIG =========='
+    );
+
+    console.log(
+      'Cloud name:',
+      cloudName || 'MISSING',
+    );
+
+    console.log(
+      'API key:',
+      apiKey ? 'LOADED' : 'MISSING',
+    );
+
+    console.log(
+      'API secret:',
+      apiSecret ? 'LOADED' : 'MISSING',
+    );
+
+
+    if (
+      !cloudName ||
+      !apiKey ||
+      !apiSecret
+    ) {
+
+      console.error(
+        '❌ Cloudinary configuration is missing',
+      );
+
+      return;
+    }
+
+
     cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
       secure: true,
     });
-  }
 
-  isConfigured(): boolean {
-    return Boolean(
-      process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET,
+
+    this.configured = true;
+
+
+    console.log(
+      '✅ Cloudinary configured successfully',
     );
   }
 
-  async uploadImage(file: Express.Multer.File): Promise<string> {
-    const MAX_ATTEMPTS = 3;
-    let lastError: Error | undefined;
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
-        this.logger.log(
-          `[C] Cloudinary upload attempt ${attempt}/${MAX_ATTEMPTS}: ${file.originalname}`,
-        );
-        const url = await this.uploadOnce(file);
-        this.logger.log(`[D] Cloudinary returned secure_url: ${url}`);
-        return url;
-      } catch (error) {
-        lastError = error as Error;
-        this.logger.warn(
-          `[C] Cloudinary upload attempt ${attempt} failed: ${
-            (error as Error).message
-          }`,
-        );
-        if (attempt < MAX_ATTEMPTS) {
-          await this.sleep(500 * attempt);
-        }
-      }
-    }
+  async uploadImage(
+    file: Express.Multer.File,
+  ): Promise<string> {
 
-    throw lastError ?? new Error('Cloudinary upload failed');
-  }
+    if (!this.configured) {
 
-  private uploadOnce(file: Express.Multer.File): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          folder: 'ims-users',
-          resource_type: 'image',
-          allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
-          use_filename: true,
-          unique_filename: true,
-          timeout: UPLOAD_TIMEOUT_MS,
-        },
-        (error, result) => {
-          if (error) {
-            reject(
-              new Error(
-                `Cloudinary upload failed: ${error.message ?? 'unknown error'}`,
-              ),
-            );
-            return;
-          }
-          if (!result?.secure_url) {
-            reject(new Error('Cloudinary upload returned no URL'));
-            return;
-          }
-          resolve(result.secure_url);
-        },
+      throw new InternalServerErrorException(
+        'Cloudinary is not configured',
       );
-
-      stream.on('error', (err) => {
-        reject(
-          new Error(
-            `Cloudinary upload stream error: ${err.message ?? 'unknown error'}`,
-          ),
-        );
-      });
-
-      stream.end(file.buffer);
-    });
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  async deleteImage(url: string): Promise<void> {
-    const publicId = this.extractPublicId(url);
-    if (!publicId) {
-      return;
     }
-    try {
-      await cloudinary.uploader.destroy(publicId);
-    } catch (error) {
-      console.error('Cloudinary delete failed:', error);
-    }
-  }
 
-  private extractPublicId(url: string): string | null {
-    try {
-      const segments = url.split('/');
-      const uploadIndex = segments.indexOf('upload');
-      if (uploadIndex === -1) {
-        return null;
-      }
-      const idParts = segments.slice(uploadIndex + 1);
-      if (idParts.length === 0) {
-        return null;
-      }
-      if (/^v\d+$/.test(idParts[0])) {
-        idParts.shift();
-      }
-      const last = idParts[idParts.length - 1];
-      idParts[idParts.length - 1] = last.replace(/\.[a-z0-9]+$/i, '');
-      return idParts.join('/');
-    } catch {
-      return null;
+
+    if (!file) {
+
+      throw new InternalServerErrorException(
+        'No image file received',
+      );
     }
+
+
+    console.log(
+      '☁️ Cloudinary uploading:',
+      file.originalname,
+    );
+
+
+    return new Promise(
+      (resolve, reject) => {
+
+        const upload =
+          cloudinary.uploader.upload_stream(
+            {
+              folder: 'ims-users',
+              resource_type: 'image',
+            },
+
+            (error, result) => {
+
+              if (error) {
+
+                console.error(
+                  '❌ Cloudinary upload error:',
+                  JSON.stringify(
+                    error,
+                    null,
+                    2,
+                  ),
+                );
+
+                reject(error);
+                return;
+              }
+
+
+              if (!result) {
+
+                reject(
+                  new Error(
+                    'Cloudinary result is empty',
+                  ),
+                );
+
+                return;
+              }
+
+
+              console.log(
+                '✅ Cloudinary upload completed',
+              );
+
+              console.log(
+                'Secure URL:',
+                result.secure_url,
+              );
+
+
+              resolve(
+                result.secure_url,
+              );
+            },
+          );
+
+
+        upload.end(file.buffer);
+      },
+    );
   }
 }

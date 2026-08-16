@@ -18,12 +18,30 @@ export class CloudinaryService {
   isConfigured(): boolean {
     return Boolean(
       this.config.get<string>('CLOUDINARY_CLOUD_NAME') &&
-        this.config.get<string>('CLOUDINARY_API_KEY') &&
-        this.config.get<string>('CLOUDINARY_API_SECRET'),
+      this.config.get<string>('CLOUDINARY_API_KEY') &&
+      this.config.get<string>('CLOUDINARY_API_SECRET'),
     );
   }
 
-  uploadImage(file: Express.Multer.File): Promise<string> {
+  async uploadImage(file: Express.Multer.File): Promise<string> {
+    const MAX_ATTEMPTS = 3;
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        return await this.uploadOnce(file);
+      } catch (error) {
+        lastError = error as Error;
+        if (attempt < MAX_ATTEMPTS) {
+          await this.sleep(500 * attempt);
+        }
+      }
+    }
+
+    throw lastError ?? new Error('Cloudinary upload failed');
+  }
+
+  private uploadOnce(file: Express.Multer.File): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
@@ -61,6 +79,10 @@ export class CloudinaryService {
 
       stream.end(file.buffer);
     });
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async deleteImage(url: string): Promise<void> {

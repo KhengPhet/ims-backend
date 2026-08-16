@@ -29,7 +29,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private cloudinaryService: CloudinaryService,
-  ) { }
+  ) {}
 
   private toPublicUser(user: User): PublicUser {
     return {
@@ -42,122 +42,78 @@ export class AuthService {
     };
   }
 
-  async register(
-    data: RegisterDto,
-    file?: Express.Multer.File,
-  ) {
-    try {
-      console.log('========== REGISTER ==========');
+  async register(data: RegisterDto, file?: Express.Multer.File) {
+    const username = data.username.trim();
+    const email = data.email.trim().toLowerCase();
 
-      console.log('Username:', data.username);
-      console.log('Email:', data.email);
-
-      console.log(
-        'File:',
-        file
-          ? {
-            name: file.originalname,
-            type: file.mimetype,
-            size: file.size,
-          }
-          : 'NO FILE',
+    // ========== REGISTER LOG (password is NEVER logged) ==========
+    this.logger.log(`REGISTER: username=${username} email=${email}`);
+    if (file) {
+      this.logger.log(
+        `REGISTER: file name=${file.originalname} size=${file.size} mimetype=${file.mimetype}`,
       );
+    } else {
+      this.logger.log('REGISTER: no image file selected');
+    }
 
-      // Check username
-      const existingUsername =
-        await this.usersService.findByUsername(
-          data.username,
+    // 1. Check duplicate username
+    const existingUsername = await this.usersService.findByUsername(username);
+    if (existingUsername) {
+      throw new ConflictException('Username is already taken');
+    }
+
+    // 2. Check duplicate email
+    const existingEmail = await this.usersService.findByEmail(email);
+    if (existingEmail) {
+      throw new ConflictException('Email is already registered');
+    }
+
+    // 3. Upload image to Cloudinary BEFORE creating the user.
+    //    If the upload fails the user is NOT created.
+    let imageUrl: string | null = null;
+
+    if (file) {
+      try {
+        imageUrl = await this.cloudinaryService.uploadImage(file);
+      } catch (error) {
+        this.logger.error(
+          `CLOUDINARY: upload failed message="${(error as Error).message}"`,
         );
-
-      if (existingUsername) {
-        throw new ConflictException(
-          'Username is already taken',
+        throw new ServiceUnavailableException(
+          'Image upload failed. Please try again.',
         );
       }
+    }
 
-      // Check email
-      const existingEmail =
-        await this.usersService.findByEmail(
-          data.email,
-        );
+    // 4. Hash password
+    const hashedPassword = await bcrypt.hash(data.password, 10);
 
-      if (existingEmail) {
-        throw new ConflictException(
-          'Email is already registered',
-        );
-      }
+    // 5. Save user
+    try {
+      const user = await this.usersService.create({
+        username,
+        email,
+        password: hashedPassword,
+        image: imageUrl,
+        role: 'user',
+      });
 
-      let imageUrl: string | null = null;
-
-      // Upload image
-      if (file) {
-        console.log(
-          '☁️ Starting Cloudinary upload...',
-        );
-
-        try {
-          imageUrl =
-            await this.cloudinaryService.uploadImage(
-              file,
-            );
-
-          console.log(
-            '✅ Cloudinary URL:',
-            imageUrl,
-          );
-        } catch (error) {
-          console.error(
-            '❌ CLOUDINARY ERROR:',
-            error,
-          );
-
-          throw new ServiceUnavailableException(
-            'Image upload failed. Please try again.',
-          );
-        }
-      }
-
-      // Hash password
-      const hashedPassword =
-        await bcrypt.hash(
-          data.password,
-          10,
-        );
-
-      // Save user
-      const user =
-        await this.usersService.create({
-          username: data.username.trim(),
-          email: data.email.trim().toLowerCase(),
-          password: hashedPassword,
-          image: imageUrl,
-          role: 'user',
-        });
-
-      console.log(
-        '✅ User created:',
-        user.id,
+      this.logger.log(
+        `DATABASE: user created id=${user.id} image=${user.image ?? 'null'}`,
       );
 
       return {
         message: 'Register success',
-
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          image: user.image,
-          role: user.role,
-          created_at: user.created_at,
-        },
+        user: this.toPublicUser(user),
       };
     } catch (error) {
-      console.error(
-        '❌ REGISTER ERROR:',
-        error,
+      // PostgreSQL unique violation (email/username) raced the check above.
+      if ((error as { code?: string })?.code === '23505') {
+        throw new ConflictException('Email or username is already taken');
+      }
+      throw new ServiceUnavailableException(
+        'Failed to create account. Please try again.',
       );
-
-      throw error;
     }
   }
 

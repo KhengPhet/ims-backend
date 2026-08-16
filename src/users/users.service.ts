@@ -23,7 +23,7 @@ export class UsersService {
   async create(data: CreateUserInput) {
     const user = await this.repo.save(data);
     this.logger.log(
-      `[E] PostgreSQL user saved id=${user.id} image=${user.image ?? 'null'}`,
+      `DATABASE: user created id=${user.id} image=${user.image ?? 'null'}`,
     );
     return user;
   }

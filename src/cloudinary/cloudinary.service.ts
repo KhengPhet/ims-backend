@@ -1,60 +1,40 @@
 import {
   Injectable,
-  InternalServerErrorException,
+  Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 
 import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class CloudinaryService {
+  private readonly logger = new Logger(CloudinaryService.name);
 
   private configured = false;
 
   constructor() {
+    this.configure();
+  }
 
-    const cloudName =
-      process.env.CLOUDINARY_CLOUD_NAME;
+  private configure(): void {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-    const apiKey =
-      process.env.CLOUDINARY_API_KEY;
-
-    const apiSecret =
-      process.env.CLOUDINARY_API_SECRET;
-
-
-    console.log(
-      '========== CLOUDINARY CONFIG =========='
+    // Safe: booleans only. The actual secret is NEVER printed.
+    this.logger.log(
+      `CLOUDINARY CONFIG: cloud name loaded: ${Boolean(cloudName)}`,
+    );
+    this.logger.log(`CLOUDINARY CONFIG: API key loaded: ${Boolean(apiKey)}`);
+    this.logger.log(
+      `CLOUDINARY CONFIG: API secret loaded: ${Boolean(apiSecret)}`,
     );
 
-    console.log(
-      'Cloud name:',
-      cloudName || 'MISSING',
-    );
-
-    console.log(
-      'API key:',
-      apiKey ? 'LOADED' : 'MISSING',
-    );
-
-    console.log(
-      'API secret:',
-      apiSecret ? 'LOADED' : 'MISSING',
-    );
-
-
-    if (
-      !cloudName ||
-      !apiKey ||
-      !apiSecret
-    ) {
-
-      console.error(
-        '❌ Cloudinary configuration is missing',
-      );
-
+    if (!cloudName || !apiKey || !apiSecret) {
+      this.logger.error('CLOUDINARY CONFIG: configuration is incomplete');
+      this.configured = false;
       return;
     }
-
 
     cloudinary.config({
       cloud_name: cloudName,
@@ -63,101 +43,73 @@ export class CloudinaryService {
       secure: true,
     });
 
-
     this.configured = true;
 
-
-    console.log(
-      '✅ Cloudinary configured successfully',
-    );
+    this.logger.log('CLOUDINARY CONFIG: configured successfully');
   }
 
+  isConfigured(): boolean {
+    return this.configured;
+  }
 
-  async uploadImage(
-    file: Express.Multer.File,
-  ): Promise<string> {
-
+  async uploadImage(file: Express.Multer.File): Promise<string> {
     if (!this.configured) {
-
-      throw new InternalServerErrorException(
-        'Cloudinary is not configured',
-      );
+      throw new ServiceUnavailableException('Cloudinary is not configured');
     }
-
 
     if (!file) {
-
-      throw new InternalServerErrorException(
-        'No image file received',
-      );
+      throw new ServiceUnavailableException('No image file received');
     }
 
+    if (!file.buffer || file.buffer.length === 0) {
+      throw new ServiceUnavailableException('Image file is empty');
+    }
 
-    console.log(
-      '☁️ Cloudinary uploading:',
-      file.originalname,
+    this.logger.log(
+      `CLOUDINARY: upload started (${file.originalname}, ${file.size} bytes, ${file.mimetype})`,
     );
 
+    return new Promise<string>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'ims-users',
+          resource_type: 'image',
+        },
+        (error, result) => {
+          if (error) {
+            const err = error as {
+              message?: string;
+              http_code?: number | string;
+              code?: number | string;
+            };
+            this.logger.error(
+              `CLOUDINARY: upload error message="${err.message ?? 'unknown'}" http_code=${err.http_code ?? 'n/a'} code=${err.code ?? 'n/a'}`,
+            );
+            reject(new Error(err.message ?? 'Cloudinary upload failed'));
+            return;
+          }
 
-    return new Promise(
-      (resolve, reject) => {
+          if (!result || !result.secure_url) {
+            this.logger.error('CLOUDINARY: upload returned no secure_url');
+            reject(new Error('Cloudinary upload returned no secure_url'));
+            return;
+          }
 
-        const upload =
-          cloudinary.uploader.upload_stream(
-            {
-              folder: 'ims-users',
-              resource_type: 'image',
-            },
+          this.logger.log('CLOUDINARY: upload success');
+          this.logger.log(`CLOUDINARY: secure_url=${result.secure_url}`);
 
-            (error, result) => {
+          resolve(result.secure_url);
+        },
+      );
 
-              if (error) {
+      stream.on('error', (streamError) => {
+        this.logger.error(
+          `CLOUDINARY: upload stream error: ${streamError.message}`,
+        );
+        reject(streamError);
+      });
 
-                console.error(
-                  '❌ Cloudinary upload error:',
-                  JSON.stringify(
-                    error,
-                    null,
-                    2,
-                  ),
-                );
-
-                reject(error);
-                return;
-              }
-
-
-              if (!result) {
-
-                reject(
-                  new Error(
-                    'Cloudinary result is empty',
-                  ),
-                );
-
-                return;
-              }
-
-
-              console.log(
-                '✅ Cloudinary upload completed',
-              );
-
-              console.log(
-                'Secure URL:',
-                result.secure_url,
-              );
-
-
-              resolve(
-                result.secure_url,
-              );
-            },
-          );
-
-
-        upload.end(file.buffer);
-      },
-    );
+      stream.end(file.buffer);
+    });
   }
 }

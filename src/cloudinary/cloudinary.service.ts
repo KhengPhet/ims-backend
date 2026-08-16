@@ -195,4 +195,43 @@ export class CloudinaryService {
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+
+
+  // ===================== test connection ======
+
+  async testConnection(): Promise<any> {
+    if (!this.configured) {
+      return {
+        success: false,
+        message: 'Cloudinary is not configured',
+      };
+    }
+
+    try {
+      const result = await cloudinary.api.ping();
+
+      return {
+        success: true,
+        message: 'Cloudinary connection successful',
+        result,
+      };
+    } catch (error) {
+      const err = error as {
+        message?: string;
+        http_code?: number;
+      };
+
+      this.logger.error(
+        `CLOUDINARY PING FAILED: ${err.message}`,
+      );
+
+      return {
+        success: false,
+        message: err.message,
+        http_code: err.http_code,
+      };
+    }
+  }
 }
+
+

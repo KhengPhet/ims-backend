@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
@@ -62,11 +63,8 @@ export class AuthService {
           );
         }
       } else {
-        // Cloudinary credentials are not set (e.g. local dev). Register the
-        // account anyway instead of failing because an optional feature is
-        // not configured.
-        console.warn(
-          'Cloudinary is not configured; registering user without a profile image.',
+        throw new ServiceUnavailableException(
+          'Profile image upload is unavailable because Cloudinary is not configured on the server.',
         );
       }
     }

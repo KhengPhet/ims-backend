@@ -50,13 +50,23 @@ export class AuthController {
     @Body() data: RegisterDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    if (file) {
-      this.logger.log(
-        `[B] Controller received file: ${file.originalname} (${file.size} bytes, ${file.mimetype})`,
-      );
-    } else {
-      this.logger.log('[B] Controller received request WITHOUT image file');
-    }
+    // SAFE DEBUG LOG (password is NEVER logged)
+    this.logger.log('REGISTER BODY:', {
+      username: data.username,
+      email: data.email,
+    });
+
+    this.logger.log(
+      'REGISTER FILE:',
+      file
+        ? {
+            name: file.originalname,
+            size: file.size,
+            type: file.mimetype,
+          }
+        : 'NO FILE',
+    );
+
     return this.authService.register(data, file);
   }
 

@@ -7,12 +7,11 @@ import {
 
 @Entity('users')
 export class User {
+
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({
-    unique: true,
-  })
+  @Column()
   username: string;
 
   @Column({
@@ -24,7 +23,7 @@ export class User {
   password: string;
 
   @Column({
-    type: 'varchar',
+    type: 'text',
     nullable: true,
   })
   image: string | null;

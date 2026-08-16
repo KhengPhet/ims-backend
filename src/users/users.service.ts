@@ -1,42 +1,72 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from './user.entity';
 
-export interface CreateUserInput {
-  username: string;
-  email: string;
-  password: string;
-  image: string | null;
-  role: string;
-}
+import { User } from './user.entity';
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name);
 
   constructor(
     @InjectRepository(User)
-    private readonly repo: Repository<User>,
+    private readonly userRepository: Repository<User>,
   ) {}
 
-  async create(data: CreateUserInput) {
-    const user = await this.repo.save(data);
-    this.logger.log(
-      `DATABASE: user created id=${user.id} image=${user.image ?? 'null'}`,
-    );
-    return user;
+  async create(data: Partial<User>): Promise<User> {
+
+    // SAFE LOG: password and secrets are NEVER logged.
+    console.log('USER DATA BEFORE SAVE:', {
+      username: data.username,
+      email: data.email,
+      image: data.image,
+      role: data.role,
+    });
+
+    const user =
+      this.userRepository.create({
+        username: data.username,
+        email: data.email,
+        password: data.password,
+        image: data.image ?? null,
+        role: data.role ?? 'user',
+      });
+
+    const savedUser =
+      await this.userRepository.save(user);
+
+    console.log('USER SAVED:', {
+      id: savedUser.id,
+      username: savedUser.username,
+      image: savedUser.image,
+    });
+
+    return savedUser;
   }
 
-  findByEmail(email: string) {
-    return this.repo.findOne({ where: { email } });
+  async findByEmail(
+    email: string,
+  ): Promise<User | null> {
+
+    return this.userRepository.findOne({
+      where: { email },
+    });
   }
 
-  findByUsername(username: string) {
-    return this.repo.findOne({ where: { username } });
+  async findByUsername(
+    username: string,
+  ): Promise<User | null> {
+
+    return this.userRepository.findOne({
+      where: { username },
+    });
   }
 
-  findById(id: number) {
-    return this.repo.findOne({ where: { id } });
+  async findById(
+    id: number,
+  ): Promise<User | null> {
+
+    return this.userRepository.findOne({
+      where: { id },
+    });
   }
 }

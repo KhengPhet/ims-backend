@@ -6,6 +6,10 @@ import {
 
 import { v2 as cloudinary } from 'cloudinary';
 
+const UPLOAD_TIMEOUT_MS = 120000;
+const MAX_UPLOAD_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 1000;
+
 @Injectable()
 export class CloudinaryService {
   private readonly logger = new Logger(CloudinaryService.name);
@@ -41,6 +45,7 @@ export class CloudinaryService {
       api_key: apiKey,
       api_secret: apiSecret,
       secure: true,
+      timeout: UPLOAD_TIMEOUT_MS,
     });
 
     this.configured = true;
@@ -69,11 +74,55 @@ export class CloudinaryService {
       `CLOUDINARY: upload started (${file.originalname}, ${file.size} bytes, ${file.mimetype})`,
     );
 
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
+      try {
+        const secureUrl = await this.uploadOnce(file);
+        this.logger.log('CLOUDINARY: upload success');
+        this.logger.log(`CLOUDINARY: secure_url=${secureUrl}`);
+        return secureUrl;
+      } catch (error) {
+        lastError = error as Error;
+        const isTransient = this.isTransientError(lastError);
+
+        if (attempt === MAX_UPLOAD_ATTEMPTS || !isTransient) {
+          break;
+        }
+
+        this.logger.warn(
+          `CLOUDINARY: upload attempt ${attempt} of ${MAX_UPLOAD_ATTEMPTS} failed (${lastError.message}). Retrying in ${RETRY_BASE_DELAY_MS * attempt}ms...`,
+        );
+        await this.delay(RETRY_BASE_DELAY_MS * attempt);
+      }
+    }
+
+    const message = lastError?.message ?? 'Cloudinary upload failed';
+    this.logger.error(
+      `CLOUDINARY: upload failed after ${MAX_UPLOAD_ATTEMPTS} attempts: ${message}`,
+    );
+    throw new ServiceUnavailableException(
+      'Image upload failed. Please try again.',
+    );
+  }
+
+  private uploadOnce(file: Express.Multer.File): Promise<string> {
     return new Promise<string>((resolve, reject) => {
+      let settled = false;
+
+      const finish = (fn: () => void) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        fn();
+      };
+
       const stream = cloudinary.uploader.upload_stream(
         {
           folder: 'ims-users',
           resource_type: 'image',
+          timeout: UPLOAD_TIMEOUT_MS,
         },
         (error, result) => {
           if (error) {
@@ -82,34 +131,46 @@ export class CloudinaryService {
               http_code?: number | string;
               code?: number | string;
             };
-            this.logger.error(
-              `CLOUDINARY: upload error message="${err.message ?? 'unknown'}" http_code=${err.http_code ?? 'n/a'} code=${err.code ?? 'n/a'}`,
-            );
-            reject(new Error(err.message ?? 'Cloudinary upload failed'));
+            finish(() => {
+              reject(
+                new Error(
+                  `${err.message ?? 'Cloudinary upload failed'} (http_code=${err.http_code ?? 'n/a'})`,
+                ),
+              );
+            });
             return;
           }
 
           if (!result || !result.secure_url) {
-            this.logger.error('CLOUDINARY: upload returned no secure_url');
-            reject(new Error('Cloudinary upload returned no secure_url'));
+            finish(() => {
+              reject(new Error('Cloudinary upload returned no secure_url'));
+            });
             return;
           }
 
-          this.logger.log('CLOUDINARY: upload success');
-          this.logger.log(`CLOUDINARY: secure_url=${result.secure_url}`);
-
-          resolve(result.secure_url);
+          finish(() => resolve(result.secure_url));
         },
       );
 
       stream.on('error', (streamError) => {
-        this.logger.error(
-          `CLOUDINARY: upload stream error: ${streamError.message}`,
-        );
-        reject(streamError);
+        finish(() => {
+          reject(
+            new Error(streamError.message ?? 'Cloudinary upload stream error'),
+          );
+        });
       });
 
       stream.end(file.buffer);
     });
+  }
+
+  private isTransientError(error: Error): boolean {
+    return /timeout|timed\s?out|499|econnreset|etimedout|socket|aborted|eai_again|enetdown/i.test(
+      error?.message ?? '',
+    );
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

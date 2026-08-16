@@ -1,8 +1,7 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
-  InternalServerErrorException,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -19,10 +18,13 @@ export interface PublicUser {
   email: string;
   image: string | null;
   role: string;
+  created_at: Date;
 }
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
@@ -36,15 +38,20 @@ export class AuthService {
       email: user.email,
       image: user.image,
       role: user.role,
+      created_at: user.created_at,
     };
   }
 
   async register(data: RegisterDto, file?: Express.Multer.File) {
-    const existing = await this.usersService.findByEmail(data.email);
-    if (existing) {
-      throw new ConflictException('Email is already registered');
+    if (file) {
+      this.logger.log(
+        `[B] AuthService received file: ${file.originalname} (${file.size} bytes, ${file.mimetype})`,
+      );
+    } else {
+      this.logger.log('[B] AuthService received request WITHOUT an image file');
     }
 
+    // 1. Check duplicate username
     const existingUsername = await this.usersService.findByUsername(
       data.username,
     );
@@ -52,25 +59,43 @@ export class AuthService {
       throw new ConflictException('Username is already taken');
     }
 
+    // 2. Check duplicate email
+    const existing = await this.usersService.findByEmail(data.email);
+    if (existing) {
+      throw new ConflictException('Email is already registered');
+    }
+
+    // 3. Upload image to Cloudinary BEFORE creating the user.
+    //    If the upload fails the user is never created.
     let image: string | null = null;
     if (file) {
       if (this.cloudinaryService.isConfigured()) {
         try {
+          this.logger.log('[C] Uploading image to Cloudinary...');
           image = await this.cloudinaryService.uploadImage(file);
+          this.logger.log(`[D] Cloudinary secure_url obtained: ${image}`);
         } catch (error) {
-          throw new BadRequestException(
-            `Image upload failed, please try again: ${(error as Error).message}`,
+          this.logger.error(
+            `[C] Cloudinary upload FAILED: ${(error as Error).message}`,
+          );
+          throw new ServiceUnavailableException(
+            'Image upload failed. Please try again.',
           );
         }
       } else {
+        this.logger.error(
+          '[C] Cloudinary is NOT configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET on Railway.',
+        );
         throw new ServiceUnavailableException(
-          'Profile image upload is unavailable because Cloudinary is not configured on the server.',
+          'Image upload failed. Please try again.',
         );
       }
     }
 
+    // 4. Hash password
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
+    // 5. Save user
     try {
       const user = await this.usersService.create({
         username: data.username,
@@ -79,6 +104,10 @@ export class AuthService {
         image,
         role: 'user',
       });
+
+      this.logger.log(
+        `[E] PostgreSQL user created id=${user.id} image=${user.image ?? 'null'}`,
+      );
 
       return {
         message: 'Register success',
@@ -92,7 +121,7 @@ export class AuthService {
       if ((error as { code?: string })?.code === '23505') {
         throw new ConflictException('Email or username is already taken');
       }
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         'Failed to create account. Please try again.',
       );
     }

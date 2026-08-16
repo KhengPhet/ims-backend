@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Post,
   UploadedFile,
   UseGuards,
@@ -21,6 +22,8 @@ const ALLOWED_IMAGE_TYPES = /jpeg|jpg|png|webp|gif/;
 
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
@@ -47,6 +50,13 @@ export class AuthController {
     @Body() data: RegisterDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    if (file) {
+      this.logger.log(
+        `[B] Controller received file: ${file.originalname} (${file.size} bytes, ${file.mimetype})`,
+      );
+    } else {
+      this.logger.log('[B] Controller received request WITHOUT image file');
+    }
     return this.authService.register(data, file);
   }
 

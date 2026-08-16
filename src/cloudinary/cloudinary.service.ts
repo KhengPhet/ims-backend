@@ -1,25 +1,28 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger } from '@nestjs/common';
 import { v2 as cloudinary } from 'cloudinary';
 
 const UPLOAD_TIMEOUT_MS = 90000;
 
 @Injectable()
 export class CloudinaryService {
-  constructor(private readonly config: ConfigService) {
+  private readonly logger = new Logger(CloudinaryService.name);
+
+  constructor() {
+    // Read straight from process.env so Railway / Docker env vars are
+    // picked up reliably regardless of ConfigModule load order.
     cloudinary.config({
-      cloud_name: this.config.get<string>('CLOUDINARY_CLOUD_NAME'),
-      api_key: this.config.get<string>('CLOUDINARY_API_KEY'),
-      api_secret: this.config.get<string>('CLOUDINARY_API_SECRET'),
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
       secure: true,
     });
   }
 
   isConfigured(): boolean {
     return Boolean(
-      this.config.get<string>('CLOUDINARY_CLOUD_NAME') &&
-      this.config.get<string>('CLOUDINARY_API_KEY') &&
-      this.config.get<string>('CLOUDINARY_API_SECRET'),
+      process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET,
     );
   }
 
@@ -29,9 +32,19 @@ export class CloudinaryService {
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        return await this.uploadOnce(file);
+        this.logger.log(
+          `[C] Cloudinary upload attempt ${attempt}/${MAX_ATTEMPTS}: ${file.originalname}`,
+        );
+        const url = await this.uploadOnce(file);
+        this.logger.log(`[D] Cloudinary returned secure_url: ${url}`);
+        return url;
       } catch (error) {
         lastError = error as Error;
+        this.logger.warn(
+          `[C] Cloudinary upload attempt ${attempt} failed: ${
+            (error as Error).message
+          }`,
+        );
         if (attempt < MAX_ATTEMPTS) {
           await this.sleep(500 * attempt);
         }

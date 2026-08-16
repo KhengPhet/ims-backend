@@ -9,10 +9,20 @@ import { AppModule } from './app.module';
 
 import { MulterExceptionFilter } from './common/filters/multer-exception.filter';
 
+import { CloudinaryService } from './cloudinary/cloudinary.service';
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const config = app.get(ConfigService);
+
+  // =========================
+  // STARTUP VALIDATION
+  // =========================
+  // Safe: only prints true/false, never the API secret.
+
+  const cloudinaryService = app.get(CloudinaryService);
+  console.log(`Cloudinary configured: ${cloudinaryService.isConfigured()}`);
 
   // =========================
   // VALIDATION

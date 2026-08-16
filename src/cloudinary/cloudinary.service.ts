@@ -126,30 +126,52 @@ export class CloudinaryService {
         },
         (error, result) => {
           if (error) {
+            this.logger.error(
+              `CLOUDINARY ERROR: ${JSON.stringify(error)}`,
+            );
+
             const err = error as {
               message?: string;
               http_code?: number | string;
-              code?: number | string;
+              name?: string;
             };
+
             finish(() => {
               reject(
                 new Error(
-                  `${err.message ?? 'Cloudinary upload failed'} (http_code=${err.http_code ?? 'n/a'})`,
+                  `Cloudinary upload failed: ${err.message ?? 'Unknown error'
+                  } | http_code=${err.http_code ?? 'n/a'
+                  } | name=${err.name ?? 'n/a'
+                  }`,
                 ),
               );
             });
+
             return;
           }
 
-          if (!result || !result.secure_url) {
+          if (!result?.secure_url) {
+            this.logger.error(
+              'CLOUDINARY ERROR: upload returned no secure_url',
+            );
+
             finish(() => {
-              reject(new Error('Cloudinary upload returned no secure_url'));
+              reject(
+                new Error(
+                  'Cloudinary upload returned no secure_url',
+                ),
+              );
             });
+
             return;
           }
+
+          this.logger.log(
+            `CLOUDINARY SUCCESS: ${result.secure_url}`,
+          );
 
           finish(() => resolve(result.secure_url));
-        },
+        }
       );
 
       stream.on('error', (streamError) => {

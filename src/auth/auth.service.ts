@@ -29,7 +29,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private cloudinaryService: CloudinaryService,
-  ) {}
+  ) { }
 
   private toPublicUser(user: User): PublicUser {
     return {
@@ -76,9 +76,13 @@ export class AuthService {
       try {
         imageUrl = await this.cloudinaryService.uploadImage(file);
       } catch (error) {
+        const err = error as Error;
+
         this.logger.error(
-          `CLOUDINARY: upload failed message="${(error as Error).message}"`,
+          `CLOUDINARY UPLOAD FAILED: ${err.message}`,
+          err.stack,
         );
+
         throw new ServiceUnavailableException(
           'Image upload failed. Please try again.',
         );

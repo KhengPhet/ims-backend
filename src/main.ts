@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 import { ValidationPipe } from '@nestjs/common';
 
@@ -9,7 +10,7 @@ import { AppModule } from './app.module';
 import { MulterExceptionFilter } from './common/filters/multer-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const config = app.get(ConfigService);
 
@@ -32,27 +33,34 @@ async function bootstrap() {
   app.useGlobalFilters(new MulterExceptionFilter());
 
   // =========================
+  // TRUST PROXY
+  // =========================
+  // Required when running behind a reverse proxy (Railway, Vercel,
+  // nginx...), so req.ip / HTTPS handling are correct.
+
+  app.set('trust proxy', 1);
+
+  // =========================
   // CORS
   // =========================
-  // Supports http://localhost:4200 (dev) PLUS any
-  // production frontend URL(s) listed in the
-  // comma-separated CORS_ORIGIN environment variable.
-  // Example:
-  //   CORS_ORIGIN=https://ims-frontend.up.railway.app,http://localhost:4200
+  // 1) If CORS_ORIGIN is set (comma-separated list) it is used, e.g.
+  //    CORS_ORIGIN=https://ims-frontend.up.railway.app
+  // 2) Otherwise ANY request Origin is reflected. This is safe because
+  //    auth uses an Authorization header (not cookies).
+  // localhost:4200 (dev) is always allowed.
 
-  const corsOrigin = config.get<string>('CORS_ORIGIN', 'http://localhost:4200');
-
-  const origins = corsOrigin
+  const configuredOrigins = config
+    .get<string>('CORS_ORIGIN', '')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  if (!origins.includes('http://localhost:4200')) {
-    origins.unshift('http://localhost:4200');
-  }
+  const origins = Array.from(
+    new Set([...configuredOrigins, 'http://localhost:4200']),
+  );
 
   app.enableCors({
-    origin: origins,
+    origin: configuredOrigins.length > 0 ? origins : true,
     credentials: true,
   });
 
@@ -60,7 +68,9 @@ async function bootstrap() {
   // PORT
   // =========================
 
-  const port = Number(config.get<string>('PORT', '8080'));
+  // Default 3000 matches the frontend dev apiUrl (http://localhost:3000).
+  // Deploy hosts (Railway/Vercel) override this via the PORT env var.
+  const port = Number(config.get<string>('PORT', '3000'));
 
   await app.listen(port, '0.0.0.0');
 

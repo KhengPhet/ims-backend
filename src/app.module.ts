@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -26,12 +27,15 @@ import { UsersModule } from './users/users.module';
           password: config.get<string>('DB_PASSWORD', ''),
           database: config.get<string>('DB_DATABASE', 'ims'),
           autoLoadEntities: true,
-          synchronize: true,
+          // Safe default so the app "just works" on first deploy.
+          // Set DB_SYNC=false once you introduce real migrations.
+          synchronize: config.get<string>('DB_SYNC', 'true') === 'true',
         };
       },
     }),
     AuthModule,
     UsersModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}
